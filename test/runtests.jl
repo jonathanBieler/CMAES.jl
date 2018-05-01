@@ -1,19 +1,48 @@
+##
+
 using Revise
 using CMAES, Optim
 using Base.Test
+using PDMats
 
 using BlackBoxOptimizationBenchmarking
 const BBOB = BlackBoxOptimizationBenchmarking
 f = BBOB.F2
+
+include("/Users/jbieler/.julia/v0.6/CMAES/src/CMAES.jl")
 
 mfit = optimize(
    f,5*rand(3),CMAES.CMA(128,5),
    Optim.Options(iterations=500,store_trace=false,extended_trace=false),
 )
 
-Optim.minimum(mfit) < f.f_opt + 1e-6
+@assert Optim.minimum(mfit) < f.f_opt + 1e-6
 Optim.minimizer(mfit), f.x_opt[1:3]
 
+##
+
+mfit = optimize(
+   f,5*rand(5),CMAES.CMA{Diagonal}(128,5),
+   Optim.Options(iterations=500,store_trace=true,extended_trace=true),
+)
+
+#@assert Optim.minimum(mfit) < f.f_opt + 1e-6
+
+x = [mean(mfit.trace[t].metadata["x"][1]) for t=1:length(mfit.trace)]
+y = [mean(mfit.trace[t].metadata["x"][2]) for t=1:length(mfit.trace)]
+z = [mfit.trace[t].value for t=1:length(mfit.trace)]
+
+plot(y=z)
+
+##
+
+mfit = optimize(
+   f,5*rand(3),CMAES.CMA(3; dimension=3),
+   Optim.Options(iterations=500,store_trace=false,extended_trace=false),
+)
+#
+
+##
 # if false
 
 #    using Gadfly
@@ -35,6 +64,8 @@ Optim.minimizer(mfit), f.x_opt[1:3]
 # end
 
 #include(joinpath(Pkg.dir(),"BlackBoxOptimizationBenchmarking","scripts","optimizers_interface.jl"))
+if false
+
 import BlackBoxOptimizationBenchmarking: minimizer, minimum, optimize
 import Base.string
 
@@ -42,6 +73,9 @@ pinit(D) = 10*rand(D)-5
 optimize(opt::Optim.AbstractOptimizer,f,D,run_length) =
 Optim.optimize(f, pinit(D), opt, Optim.Options(f_calls_limit=run_length,g_tol=1e-12))
 
-mean_succ, mean_dist, mean_fmin, runtime = BBOB.benchmark([CMAES.CMA(64,5)], [1 2 3 4 5 6 7 8], [20000], 20, 3, 1e-6)
+mean_succ, mean_dist, mean_fmin, runtime = BBOB.benchmark([CMAES.CMA(64,5)], [1 2 3 4 5], [20000], 20, 3, 1e-6)
 
 println(mean_succ)
+
+end
+
