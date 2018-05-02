@@ -12,8 +12,8 @@ f = BBOB.F2
 include("/Users/jbieler/.julia/v0.6/CMAES/src/CMAES.jl")
 
 mfit = optimize(
-   f,5*rand(3),CMAES.CMA(128,5),
-   Optim.Options(iterations=500,store_trace=false,extended_trace=false),
+   f,5*rand(2),CMAES.CMA(16,5),
+   Optim.Options(iterations=20,store_trace=true,extended_trace=true),
 )
 
 @assert Optim.minimum(mfit) < f.f_opt + 1e-6
@@ -22,18 +22,33 @@ Optim.minimizer(mfit), f.x_opt[1:3]
 ##
 
 mfit = optimize(
-   f,5*rand(5),CMAES.CMA{Diagonal}(128,5),
-   Optim.Options(iterations=500,store_trace=true,extended_trace=true),
+   f,5*rand(2),CMAES.CMA{Diagonal}(116,5),
+   Optim.Options(iterations=20,store_trace=true,extended_trace=true),
 )
 
 #@assert Optim.minimum(mfit) < f.f_opt + 1e-6
+Optim.minimum(mfit) , f.f_opt + 1e-6
 
-x = [mean(mfit.trace[t].metadata["x"][1]) for t=1:length(mfit.trace)]
-y = [mean(mfit.trace[t].metadata["x"][2]) for t=1:length(mfit.trace)]
+x = [mean(mfit.trace[t].metadata["x"])[1] for t=1:length(mfit.trace)]
+y = [mean(mfit.trace[t].metadata["x"])[2] for t=1:length(mfit.trace)]
 z = [mfit.trace[t].value for t=1:length(mfit.trace)]
 
-plot(y=z)
+plot(y=z-f.f_opt,yintercept=[1e-6],Geom.line,Geom.hline(color=colorant"gray"),Scale.y_log10)
 
+##
+
+    using Gadfly
+    fl = layer(z=(x,y) -> f([x;y])-f.f_opt, x=linspace(-5,5,200), y=linspace(-5,5,200), Geom.contour(levels=logspace(-8,8,15)))
+#    fl = layer(z=(x,y) -> f([x;y])-f.f_opt, x=linspace(-5,5,100), y=linspace(-5,5,100), Geom.contour())
+
+    x = [mean(mfit.trace[t].metadata["x"])[1] for t=1:length(mfit.trace)]
+    y = [mean(mfit.trace[t].metadata["x"])[2] for t=1:length(mfit.trace)]
+
+    plot(fl, 
+        layer(x=x,y=y,Geom.line, Theme(default_color=colorant"black") ), 
+        layer(x=[f.x_opt[1]],y=[f.x_opt[2]],Geom.point,Theme(default_color=colorant"red")) 
+    )
+ 
 ##
 
 mfit = optimize(
@@ -43,13 +58,9 @@ mfit = optimize(
 #
 
 ##
-# if false
-
-#    using Gadfly
-#    fl = layer(z=(x,y) -> f([x;y])-f.f_opt, x=linspace(-5,5,200), y=linspace(-5,5,200), Geom.contour(levels=logspace(-8,8,20)))
-#    fl = layer(z=(x,y) -> f([x;y])-f.f_opt, x=linspace(-5,5,100), y=linspace(-5,5,100), Geom.contour())
-#    plot(fl)
-
+ 
+# if false   
+#
 #    for t = 2:30#length(mfit.trace)
 #        p = mfit.trace[t].metadata["x"]
 #        display(plot(
@@ -62,6 +73,8 @@ mfit = optimize(
 #    end
 
 # end
+
+##
 
 #include(joinpath(Pkg.dir(),"BlackBoxOptimizationBenchmarking","scripts","optimizers_interface.jl"))
 if false

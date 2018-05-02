@@ -84,7 +84,7 @@ module CMAES
         μ = floor(Int,λ/2)
         w = weights(μ)
         
-        D, μ_w, c_σ, d_σ, c_c, c_1, c_μ = init_constants(xinit,λ,w,μ)
+        D, μ_w, c_σ, d_σ, c_c, c_1, c_μ = init_constants(method,xinit,λ,w,μ)
         p_σ, p_c = zeros(D), zeros(D)
         C = init_C(method,D)
         
@@ -137,6 +137,7 @@ module CMAES
         for i=1:λ
             value!(d,x[i])
             fx[i] = value(d)
+            isnan(fx[i]) && error("Function return NaN for input $(x[i])")
         end
 
         idx = sortperm(fx)  
@@ -147,16 +148,17 @@ module CMAES
         
         Δm = m-m_t
         
-        p_σ = (1-c_σ)*p_σ  + √(c_σ*(2-c_σ)*μ_w) * C^(-1/2) * Δm/σ
+        p_σ = update_p_σ(c_σ, p_σ, μ_w, C, Δm, σ)
         
         h_σ = norm(p_σ) < √(1-(1-c_σ)^(2*(t+1)))*(1.4 + 2/(D+1)) ? 1.0 : 0.0
         
         p_c = (1-c_c)*p_c + h_σ*√(c_σ*(2 - c_σ)*μ_w) * Δm/σ
-                
+           
         C = update_C(C, c_1, c_μ, h_σ, c_c, p_c, w, σ, x, m, μ)
-        info( (p_σ, C) )
-            
+        
         σ = σ * exp(c_σ/d_σ*(norm(p_σ)/chi_D -1))
+            
+        @show p_σ
             
         t += 1
             
@@ -178,7 +180,7 @@ module CMAES
         C = (C+C')/2 #keep symmetric part
         C
     end
-    
+        
     #this is probably wrong
     function update_C(C::Diagonal, c_1, c_μ, h_σ, c_c, p_c, w, σ, x, m, μ)
     
@@ -188,7 +190,15 @@ module CMAES
             
         C
     end
-
+    
+    function update_p_σ(c_σ, p_σ, μ_w, C, Δm, σ)
+        (1-c_σ)*p_σ  + √(c_σ*(2-c_σ)*μ_w) * C^(-1/2) * Δm/σ
+    end
+    
+    function update_p_σ(c_σ, p_σ, μ_w, C::Diagonal, Δm, σ)
+        (1-c_σ)*p_σ  + √(c_σ*(2-c_σ)*μ_w) * C^(-1/2) * Δm/σ
+    end
+    
     function assess_convergence(state::CMAState, d, options)
         
         x_converged, f_converged, g_converged, converged, f_increased = Optim.default_convergence_assessment(state, d, options)
@@ -215,7 +225,7 @@ module CMAES
     pick_best_f(f_increased, state::CMAState, d) = state.f_x 
     pick_best_x(f_increased, state::CMAState) = state.x
 
-    function init_constants(xinit,λ,w,μ)
+    function init_constants(method::CMA{K}, xinit,λ,w,μ) where K <: MatTypes
         D = length(xinit)
     
         μ_w = 1.0 / sum(w.^2)
@@ -224,9 +234,17 @@ module CMAES
         d_σ = 1.0 + c_σ + 2.0*max(0, √((μ_w-1)/(D+1)) -1) 
         
         c_c = (4 + μ_w/D)/(D + 4 + 2μ_w/D) 
-        c_1 =  2/((D+1.3)^2 + μ_w)
-        c_μ = min(1-c_1,2*(μ_w-2+1/μ_w)/((D+2)^2 +μ_w)) 
         
+        c_1 = 2/((D+1.3)^2 + μ_w)
+        c_μ = min(1-c_1,2*(μ_w-2+1/μ_w)/((D+2)^2 +μ_w))
+        
+        if K == Diagonal #A Simple Modification in CMA-ES Achieving Linear Time and Space Complexity
+#            d_σ *= 100#1.0 + c_σ + 2.0*max(0, √((μ_w-1)/(D+1)) -1) 
+#            
+#            c_1 = (D+2)/3 * 1/μ_w * 2/(√2 + D)^2
+#            c_μ = (D+2)/3 * (1-1/μ_w)*min(1,(2μ_w-1)/((D+2)^2 +μ_w))
+        end
+
         D, μ_w, c_σ, d_σ, c_c, c_1, c_μ
     end
    
