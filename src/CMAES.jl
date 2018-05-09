@@ -38,7 +38,7 @@ module CMAES
          CMA{Matrix}(4+floor(Int,3*log(dimension)), σ)
     end
     
-    type CMAState{T, K <: MatTypes} <: Optim.ZerothOrderState
+    type CMAState{T <: AbstractFloat, K <: MatTypes} <: Optim.ZerothOrderState
         x::Array{T,1}
         x_previous::Array{T,1} #this is used by default convergence test
         f_x::T
@@ -157,13 +157,14 @@ module CMAES
         
         σ = σ * exp(c_σ/d_σ*(norm(p_σ)/chi_D -1))
             
+#        @show maximum(D)/minimum(D) 
+            
         D,B = eig(C)
         B = K <: Diagonal ? Diagonal(B) : B
-#        @show D
-        D = sqrt.(D) 
+        
+        D = sqrt.(abs.(D)) #eigenvalues can become negative because of numerical errors 
         
         t += 1
-            
         state.x = x[1]
         state.f_x = fx[1]
         xs = x
@@ -173,7 +174,6 @@ module CMAES
         false # should the procedure force quit?
     end
     
-    
     ⊗(::Type{Matrix{T}},x)   where T = x * x'
     ⊗(::Type{Diagonal{T}},x) where T = Diagonal(x.^2)
     
@@ -181,6 +181,8 @@ module CMAES
         C = (1-c_cov) * C +
             c_cov * 1/μ_w * ⊗(K,p_c) +
             c_cov * (1-1/μ_w) * ∑( w[i]* ⊗(K,BD*z[i]) for i=1:μ)
+            
+        #(C+C')/2
         C
     end
     
@@ -194,7 +196,9 @@ module CMAES
         
         c_c = (4 + μ_w/n)/(n + 4 + 2μ_w/n) #Benchmarking a BI-Population CMA-ES on the BBOB-2009 Function Testbed
         
-        c_cov = 1/μ_w*2/((n+1.3)^2) + (1-1/μ_w)*min(1,2*(μ_w-1)/((n+2)^2 +μ_w)) 
+        c_cov = 1/μ_w * 2/((n+1.3)^2) + (1-1/μ_w)*min(1,2*(μ_w-1)/((n+2)^2 +μ_w)) 
+        
+#        c_cov *= 2
          
         if K <: Diagonal #A Simple Modification in CMA-ES Achieving Linear Time and Space Complexity
             c_cov = min(1, c_cov*(n+2)/3) # I need to clamp here for low n
@@ -208,15 +212,13 @@ module CMAES
         x_converged, f_converged, g_converged, converged, f_increased = Optim.default_convergence_assessment(state, d, options)
         f_increased = false #disable this one, since error can increase with CMAES
 
-        @unpack n, λ, p_c, σ, σ_0,t,C = state
-
-        d,_ = eig(C) #FIXME maybe a bit costly
+        @unpack n, λ, p_c, σ, σ_0,t,D,C = state
 
         MaxIter = t > 100 + 50*(n+3)*2/√(λ)
 
         TolX = t > 1 && all(p_c * σ/σ_0 .< 1e-16) && all(sqrt.(diag(C)) * σ/σ_0  .< 1e-16)
-        TolUpSigma = σ/σ_0 > 10^20 * √(maximum(d))
-        ConditionCov = abs(maximum(d)) / abs(minimum(d)) > 10^14
+        TolUpSigma = σ/σ_0 > 10^20 * √(maximum(D))
+        ConditionCov = abs(maximum(D)) / abs(minimum(D)) > 10^14
         
         converged = MaxIter || TolX || TolUpSigma || ConditionCov
 

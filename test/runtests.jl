@@ -1,26 +1,39 @@
 ##
 
-using Revise
+using Gadfly
 using CMAES, Optim
 using Base.Test
 using PDMats
 
 using BlackBoxOptimizationBenchmarking
 const BBOB = BlackBoxOptimizationBenchmarking
-f = enumerate(BBOBFunction)[6]
+f = enumerate(BBOBFunction)[3]
 
 include("/Users/jbieler/.julia/v0.6/CMAES/src/CMAES.jl")
 
 mfit = optimize(
-   f,[-5.;4.],CMAES.CMA(8,1),
-   Optim.Options(iterations=2000,store_trace=true,extended_trace=true),
+   f,10*rand(3)-5,CMAES.CMA(3;dimension=3),
+   Optim.Options(f_calls_limit=2000,store_trace=true,extended_trace=true),
 )
 
 z = [mfit.trace[t].value for t=1:length(mfit.trace)]
 display(plot(y=z-f.f_opt+1e-16,yintercept=[1e-6],Geom.line,Geom.hline(color=colorant"gray"),Scale.y_log10))
 
-@assert Optim.minimum(mfit) < f.f_opt + 1e-6
-Optim.minimizer(mfit), f.x_opt[1:3]
+#@assert Optim.minimum(mfit) < f.f_opt + 1e-6
+#Optim.minimizer(mfit), f.x_opt[1:3]
+
+##
+
+es = cma.CMAEvolutionStrategy(pinit(3), 1, Dict("verb_log"=>0,"verb_disp"=>1,"maxfevals"=>1000))
+mfit = es[:optimize](f)
+mfit[:result]
+
+##
+
+using BlackBoxOptimizationBenchmarking
+const BBOB = BlackBoxOptimizationBenchmarking
+
+BBOB.benchmark(BBOB.OptFun(CMAES.CMA(12,10.0),4), 5_000, 15, 3, 1e-6) 
 
 ## Diagonal one
 
