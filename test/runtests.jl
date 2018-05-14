@@ -7,12 +7,14 @@ using PDMats
 
 using BlackBoxOptimizationBenchmarking
 const BBOB = BlackBoxOptimizationBenchmarking
-f = enumerate(BBOBFunction)[3]
+f = enumerate(BBOBFunction)[5]
 
 include("/Users/jbieler/.julia/v0.6/CMAES/src/CMAES.jl")
 
+T = CMAES.BD_CovMatrix
+
 mfit = optimize(
-   f,10*rand(3)-5,CMAES.CMA(3;dimension=3),
+   f,10*rand(3)-5,CMAES.CMA(T,3;dimension=3),
    Optim.Options(f_calls_limit=2000,store_trace=true,extended_trace=true),
 )
 
@@ -27,6 +29,14 @@ display(plot(y=z-f.f_opt+1e-16,yintercept=[1e-6],Geom.line,Geom.hline(color=colo
 es = cma.CMAEvolutionStrategy(pinit(3), 1, Dict("verb_log"=>0,"verb_disp"=>1,"maxfevals"=>1000))
 mfit = es[:optimize](f)
 mfit[:result]
+
+##
+
+using CMAES2
+
+xmin, fmin, = CMAES2.minimize(f.f, 10*rand(3)-5, 3, fill(-100,3), fill(100,3); maxfevals = 2000)
+
+@assert fmin < f.f_opt + 1e-6
 
 ##
 

@@ -21,7 +21,7 @@ addprocs(1)
     include(joinpath(Pkg.dir(),"BlackBoxOptimizationBenchmarking/scripts/optimizers_interface.jl"))
 
     dimensions = [3 10]
-    Ntrials = 20
+    Ntrials = 5
     Δf = 1e-6
 #    run_lengths = round.(Int,linspace(20,60_000,20))
     run_lengths = round.(Int,linspace(20,5_000,10))
@@ -30,7 +30,8 @@ addprocs(1)
 end
 
 optimizers = [
-    CMAES.CMA(5.0,;dimension=3),
+    CMAES.CMA(CMAES.FullCovMatrix,5.0,;dimension=3),
+    CMAES.CMA(CMAES.BD_CovMatrix,5.0,;dimension=3),
 #    CMAES.CMA(12,10.0),
 #    PyCMA(),
 ]
