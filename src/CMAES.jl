@@ -2,6 +2,8 @@ module CMAES
 ##
 
     using Optim, Distributions, Parameters, PDMats
+    using LinearAlgebra
+
     import Optim: AbstractObjective, ZerothOrderOptimizer, ZerothOrderState, initial_state, update_state!,
                   trace!, assess_convergence, AbstractOptimizerState, update!, value, value!,
                   pick_best_x, pick_best_f, f_abschange, x_abschange
@@ -37,7 +39,7 @@ module CMAES
     init_matrix(::Type{Matrix},n) = diagm(ones(n))
     init_matrix(::Type{Diagonal},n) = Diagonal(ones(n))
         
-    mutable struct CMAState{T <: AbstractFloat, CM <: CovMatrix} <: Optim.ZerothOrderState
+    mutable struct CMAState{T <: AbstractFloat, CM <: CovMatrix, S} <: Optim.ZerothOrderState
         x::Array{T,1}
         x_previous::Array{T,1} #this is used by default convergence test
         f_x::T
@@ -60,11 +62,11 @@ module CMAES
         λ::Int
         t::Int
         xs::Vector{Vector{T}}
+        dict_struct::S
     end
     
     ∑(x) = sum(x)    
-    weights(μ) = [(log(μ+1)-log(i)) for i=1:μ] / ∑( log(μ+1)-log(j) for j=1:μ )
-    
+    weights(μ) = log(μ + 1/2) .- log.(1:μ) #[(log(μ+1)-log(i)) for i=1:μ] / ∑( log(μ+1)-log(j) for j=1:μ )
     
     include("FullCovMatrix.jl")
     include("BD_CovMatrix.jl")
@@ -80,30 +82,50 @@ module CMAES
          CMA{Matrix,T}(4+floor(Int,3*log(dimension)), σ)
     end
     
+    ## Dict support
+    
+    npara(xinit::Vector) = length(xinit)
+    npara(xinit::Associative) = sum(length(v) for v in values(xinit))
+    
+    dict_structure(d::Associative) = collect(keys(d)), length.(collect(values(d)))
+    dict_structure(d::Vector) = nothing
+    
+    to_vector(d::Associative) = vcat(collect(values(d))...)
+    to_vector(d::Vector) = d
+
+    function to_dict(dict_struct, p::Vector)
+        len = dict_struct[2]
+        starts = cumsum([1; len[1:end-1]])
+        vals = [p[starts[i]:(starts[i]+len[i]-1)] for i=1:length(len)]
+        Dict(zip(dict_struct[1],vals))
+    end
+    to_dict(dict_struct::Void, p::Vector) = p
+
     ##
 
     function initial_state(method::CMA{K,CM}, options, d, xinit) where {K <: MatTypes, CM <: CovMatrix}
         
         λ = method.λ
-        n = length(xinit)
+        n = npara(xinit)
         
         μ = floor(Int,λ/2)
         w = weights(μ)
-        
-        n, μ_w, c_σ, d_σ, c_c = init_constants(method,xinit,λ,w,μ)
-        p_σ, p_c = zeros(n), zeros(n)
-        cov_mat = CM(K, n, μ_w)
+        normalize!(w, 1)
         
         m = xinit
-    
+        n, μ_w, c_σ, d_σ, c_c = init_constants(method,n,λ,w,μ)
+        p_σ, p_c = zeros(n), ones(n)
+        cov_mat = CM(K, n, μ_w)
+        
         chi_D = √n*(1-1/(4n) + 1/(21n^2))
         xs = [zeros(n) for i=1:μ]
         σ_0 = copy(method.σ)
         
         CMAState(
-            xinit,xinit,Inf,Inf,w,
+            to_vector(xinit),to_vector(xinit),Inf,Inf,w,
             n, μ_w, c_σ, d_σ, c_c,
-            p_σ, p_c,cov_mat,m,chi_D,method.σ,σ_0,λ,1,xs
+            p_σ, p_c,cov_mat,m,chi_D,method.σ,σ_0,λ,1,xs,
+            dict_structure(xinit)
         )
     end
     
@@ -125,10 +147,10 @@ module CMAES
     end
     
   
-    function eval_objfun(T, λ, d, x)
+    function eval_objfun(T, λ, d, x, dict_struct)
         fx = zeros(T,λ)
         for i=1:λ
-            value!(d,x[i])
+            value!(d,to_dict(dict_struct,x[i]))
             fx[i] = value(d)
             isnan(fx[i]) && error("Function returned NaN for input $(x[i])")
         end
@@ -143,20 +165,18 @@ module CMAES
     σ * exp(c_σ/d_σ*(norm(p_σ)/chi_D -1))
     end
     
-    
     ⊗(::Type{Matrix{T}},x)   where T = x * x'
-    ⊗(::Type{Diagonal{T}},x) where T = Diagonal(x.^2)
+    ⊗(::Type{Diagonal{T,Vector{T}}},x) where T = Diagonal(x.^2)
     
-    function init_constants(method::CMA{K}, xinit,λ,w,μ) where K <: MatTypes
-        n = length(xinit)
-    
+    function init_constants(method::CMA{K},n,λ,w,μ) where K <: MatTypes
+        
         μ_w = 1 / sum(w.^2)
         c_σ =  (μ_w + 2) / (n + μ_w + 5)
-        
+         
         d_σ = 1 + c_σ + 2*max(0, √((μ_w-1)/(n+1)) -1)
         
         c_c = (4 + μ_w/n)/(n + 4 + 2μ_w/n) #Benchmarking a BI-Population CMA-ES on the BBOB-2009 Function Testbed
-        
+#        c_c = 4 / (n + 4)
          
 #        if K <: Diagonal #A Simple Modification in CMA-ES Achieving Linear Time and Space Complexity
 #            c_cov = min(1, c_cov*(n+2)/3) # I need to clamp here for low n
@@ -164,6 +184,8 @@ module CMAES
         
         n, μ_w, c_σ, d_σ, c_c
     end
+
+#(w, μeff, cc, cσ, c1, cμ, dσ) = ([0.637043, 0.28457, 0.0783872], 2.0286114646100617, 0.5714285714285714, 0.5017818438926943, 0.09747248265066792, 0.038593139193450914, 1.5017818438926942)([0.637043, 0.28457, 0.0783872], 2.0286114646100617, 0.5714285714285714, 0.5017818438926943, 0.09747248265066792, 0.038593139193450914, 1.5017818438926942)
 
     function assess_convergence(state::CMAState, d, options)
         
@@ -173,7 +195,7 @@ module CMAES
         @unpack n, λ, p_c, σ, σ_0,t, cov_mat = state
         C,D = cov_matrix(cov_mat), eigvals(cov_mat)
 
-        MaxIter = t > 100 + 50*(n+3)*2/√(λ)
+        MaxIter = false# t > 100 + 50*(n+3)*2/√(λ)
 
         TolX = t > 1 && all(p_c * σ/σ_0 .< 1e-16) && all(sqrt.(diag(C)) * σ/σ_0  .< 1e-16)
         TolUpSigma = σ/σ_0 > 10^20 * √(maximum(D))
