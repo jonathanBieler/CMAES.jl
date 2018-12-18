@@ -36,10 +36,10 @@ module CMAES
         σ::Float64
     end
     
-    init_matrix(::Type{Matrix},n) = diagm(ones(n))
+    init_matrix(::Type{Matrix},n) = Matrix(Diagonal(ones(n)))
     init_matrix(::Type{Diagonal},n) = Diagonal(ones(n))
         
-    mutable struct CMAState{T <: AbstractFloat, CM <: CovMatrix, S} <: Optim.ZerothOrderState
+    mutable struct CMAState{T <: AbstractFloat, CM <: CovMatrix} <: Optim.ZerothOrderState
         x::Array{T,1}
         x_previous::Array{T,1} #this is used by default convergence test
         f_x::T
@@ -62,7 +62,6 @@ module CMAES
         λ::Int
         t::Int
         xs::Vector{Vector{T}}
-        dict_struct::S
     end
     
     ∑(x) = sum(x)    
@@ -82,24 +81,9 @@ module CMAES
          CMA{Matrix,T}(4+floor(Int,3*log(dimension)), σ)
     end
     
-    ## Dict support
+    ## Dict support (view previous commit)
     
     npara(xinit::Vector) = length(xinit)
-    npara(xinit::Associative) = sum(length(v) for v in values(xinit))
-    
-    dict_structure(d::Associative) = collect(keys(d)), length.(collect(values(d)))
-    dict_structure(d::Vector) = nothing
-    
-    to_vector(d::Associative) = vcat(collect(values(d))...)
-    to_vector(d::Vector) = d
-
-    function to_dict(dict_struct, p::Vector)
-        len = dict_struct[2]
-        starts = cumsum([1; len[1:end-1]])
-        vals = [p[starts[i]:(starts[i]+len[i]-1)] for i=1:length(len)]
-        Dict(zip(dict_struct[1],vals))
-    end
-    to_dict(dict_struct::Void, p::Vector) = p
 
     ##
 
@@ -122,10 +106,9 @@ module CMAES
         σ_0 = copy(method.σ)
         
         CMAState(
-            to_vector(xinit),to_vector(xinit),Inf,Inf,w,
+            xinit,xinit,Inf,Inf,w,
             n, μ_w, c_σ, d_σ, c_c,
             p_σ, p_c,cov_mat,m,chi_D,method.σ,σ_0,λ,1,xs,
-            dict_structure(xinit)
         )
     end
     
@@ -147,10 +130,10 @@ module CMAES
     end
     
   
-    function eval_objfun(T, λ, d, x, dict_struct)
+    function eval_objfun(T, λ, d, x)
         fx = zeros(T,λ)
         for i=1:λ
-            value!(d,to_dict(dict_struct,x[i]))
+            value!(d,x[i])
             fx[i] = value(d)
             isnan(fx[i]) && error("Function returned NaN for input $(x[i])")
         end

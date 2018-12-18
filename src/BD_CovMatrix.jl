@@ -36,7 +36,7 @@ end
 
 function update_state!(d, state::CMAState{T,CM}, method::CMA) where {T,CM <: BD_CovMatrix}
     
-    @unpack w,n,μ_w,c_σ,d_σ,c_c,p_σ,p_c,cov_mat,m,chi_D,σ,t,xs,dict_struct = state
+    @unpack w,n,μ_w,c_σ,d_σ,c_c,p_σ,p_c,cov_mat,m,chi_D,σ,t,xs = state
     @unpack C,B,D,c_cov = cov_mat
     
     state.f_x_previous = state.f_x
@@ -50,7 +50,7 @@ function update_state!(d, state::CMAState{T,CM}, method::CMA) where {T,CM <: BD_
     z = [randn(n) for i=1:λ]
     x = [m + σ*BD*z[i] for i=1:λ]
 
-    fx = eval_objfun(T, λ, d, x, dict_struct)
+    fx = eval_objfun(T, λ, d, x)
 
     idx = sortperm(fx)  
     x,z,fx = x[idx], z[idx], fx[idx]
@@ -65,7 +65,7 @@ function update_state!(d, state::CMAState{T,CM}, method::CMA) where {T,CM <: BD_
     
     σ = update_σ(CM, σ, c_σ, d_σ, p_σ, chi_D)
         
-    D,B = eig(C)
+    D,B = eigen(C)
     B = typeof(C) <: Diagonal ? Diagonal(B) : B
     
     D = sqrt.(abs.(D)) #eigenvalues can become negative because of numerical errors 
@@ -76,7 +76,7 @@ function update_state!(d, state::CMAState{T,CM}, method::CMA) where {T,CM <: BD_
     xs = x
 
     @pack! cov_mat = C,B,D,c_cov
-    @pack! state = w,n,μ_w,c_σ,d_σ,c_c,p_σ,p_c,cov_mat,m,chi_D,σ,t,xs,dict_struct
+    @pack! state = w,n,μ_w,c_σ,d_σ,c_c,p_σ,p_c,cov_mat,m,chi_D,σ,t,xs
 
     false # should the procedure force quit?
 end

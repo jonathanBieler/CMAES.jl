@@ -14,7 +14,7 @@ function FullCovMatrix(::Type{K}, n, μ_w) where K <: MatTypes
 end
 
 cov_matrix(cov_mat::FullCovMatrix) = cov_mat.C
-eigvals(cov_mat::FullCovMatrix) = eig(cov_mat.C)[1] #FIXME maybe a bit costly
+eigvals(cov_mat::FullCovMatrix) = eigen(cov_mat.C).values #FIXME maybe a bit costly
 
 mv_rand(n,C) = rand(MultivariateNormal(zeros(n),C))
 mv_rand(n,C::Diagonal) = rand(MultivariateNormal(zeros(n),diag(C)))
@@ -59,7 +59,7 @@ end
 
 function update_state!(d, state::CMAState{T,CM}, method::CMA) where {T,CM <: FullCovMatrix}
     
-    @unpack w,n,μ_w,c_σ,d_σ,c_c,p_σ,p_c,cov_mat,m,chi_D,σ,t,xs,dict_struct = state
+    @unpack w,n,μ_w,c_σ,d_σ,c_c,p_σ,p_c,cov_mat,m,chi_D,σ,t,xs = state
     @unpack C,c_1,c_μ = cov_mat
     
     state.f_x_previous = state.f_x
@@ -70,7 +70,7 @@ function update_state!(d, state::CMAState{T,CM}, method::CMA) where {T,CM <: Ful
 
     x = [m + σ*mv_rand(n,C) for i=1:λ]
     
-    fx = eval_objfun(T, λ, d, x, dict_struct)
+    fx = eval_objfun(T, λ, d, x)
 
     idx = sortperm(fx)  
     x, fx = x[idx], fx[idx]
@@ -99,8 +99,8 @@ function update_state!(d, state::CMAState{T,CM}, method::CMA) where {T,CM <: Ful
     state.f_x = fx[1]
     xs = x
 
-    @pack cov_mat = C,c_1,c_μ
-    @pack state = w,n,μ_w,c_σ,d_σ,c_c,p_σ,p_c,cov_mat,m,chi_D,σ,t,xs,dict_struct
+    @pack! cov_mat = C,c_1,c_μ
+    @pack! state = w,n,μ_w,c_σ,d_σ,c_c,p_σ,p_c,cov_mat,m,chi_D,σ,t,xs
 
     false # should the procedure force quit?
 end
