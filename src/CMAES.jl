@@ -106,7 +106,7 @@ module CMAES
         σ_0 = copy(method.σ)
         
         CMAState(
-            xinit,xinit,Inf,Inf,w,
+            copy(xinit),copy(xinit),Inf,Inf,w,
             n, μ_w, c_σ, d_σ, c_c,
             p_σ, p_c,cov_mat,m,chi_D,method.σ,σ_0,λ,1,xs,
         )
